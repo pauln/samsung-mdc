@@ -1444,3 +1444,32 @@ class VIDEO_WALL_MODEL(Command):
     GET, SET = True, True
 
     DATA = [VideoWallModel('MODEL'), Int('SERIAL', range(1, 256))]
+
+
+class LOW_POWER_NETWORKING(Command):
+    """
+    Get the device's low-power networking configuration.
+    """
+    CMD = 0xD2
+    SUBCMD = 0xB0
+    GET, SET = True, False
+    DATA = [Str('IP_ADDRESS'), Str('MAC_ADDRESS'), Str('SSID'), Str('FIRMWARE_VERSION')]
+
+    @classmethod
+    def parse_response_data(cls, data):
+        records = {
+            0: "",
+            1: "",
+            2: "",
+            9: "",
+        }
+        record_start = 0
+
+        for idx in range(0, len(data)):
+            if data[idx] == 0x80 or idx == len(data) - 2:
+                if record_start > 0:
+                    # We're already past the header; process this record.
+                    records[data[record_start+1]] = data[record_start+3:idx].decode('utf8')
+                record_start = idx
+
+        return (records[0], records[1], records[2], records[9])
