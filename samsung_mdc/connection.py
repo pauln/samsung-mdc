@@ -44,8 +44,16 @@ def pack_payload(
     if subcmd is not None:
         data = bytes([subcmd]) + data
 
+    num_len_bytes = 1
+    if cmd == 0xD2:
+        # File transfers use 2 bytes for the length.
+        num_len_bytes = 2
+    
+    data_len = len(data).to_bytes(num_len_bytes)
+
     payload = (
-        bytes([HEADER_CODE, cmd, display_id, len(data)])
+        bytes([HEADER_CODE, cmd, display_id])
+        + data_len
         + bytes(data)
     )
     payload += bytes([get_checksum(payload[1:])])
@@ -221,6 +229,9 @@ class MDCConnection:
         data: Union[bytes, Sequence] = b''
     ):
         cmd, subcmd = _normalize_cmd(cmd)
+        is_file_transfer = cmd == 0xD2
+        offset = 1 if is_file_transfer else 0
+
         payload = pack_payload((cmd, subcmd), display_id, data)
 
         if not self.is_opened:
@@ -232,7 +243,8 @@ class MDCConnection:
         if self.verbose:
             self.verbose('Sent', repr_hex(payload))
 
-        resp = await wait_for_read(self.reader, 4, self.timeout,
+        header_length = 4 + offset # Account for extra length byte for file transfers.
+        resp = await wait_for_read(self.reader, header_length, self.timeout,
                                    'Response header read timeout')
         if not resp:
             raise MDCResponseError('Empty response', resp)
@@ -248,7 +260,7 @@ class MDCConnection:
             raise MDCResponseError('Unexpected display_id',
                                    resp + self.reader._buffer)
 
-        length = resp[3]
+        length = int.from_bytes([resp[3], resp[4]], byteorder='big') if is_file_transfer else resp[3]
         resp += await wait_for_read(self.reader, length + 1, self.timeout,
                                     'Response data read timeout')
         if self.verbose:
@@ -258,7 +270,7 @@ class MDCConnection:
         if checksum != int(resp[-1]):
             raise MDCResponseError('Checksum failed', resp)
 
-        ack, rcmd, data = resp[4], resp[5], resp[6:-1]
+        ack, rcmd, data = resp[4+offset], resp[5+offset], resp[6+offset:-1]
         if ack not in (ACK_CODE, NAK_CODE):
             raise MDCResponseError('Unexpected ACK/NAK', resp)
 
