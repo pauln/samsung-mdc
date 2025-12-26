@@ -1473,3 +1473,26 @@ class LOW_POWER_NETWORKING(Command):
                 record_start = idx
 
         return (records[0], records[1], records[2], records[9])
+
+
+class BATTERY_STATUS(Command):
+    """
+    Get the device's battery/charging status.
+    """
+    CMD = 0x1B
+    SUBCMD = 0x73
+    GET, SET = True, False
+
+    class POWER_SOURCE(IntEnum):
+        BATTERY = 0x00
+        PLUGGED_IN = 0x02
+
+    class BATTERY_WARNING(IntEnum):
+        DISABLED = 0x00
+        ENABLED = 0x01
+
+    DATA = [Int('BATTERY_PERCENT', range(101)), POWER_SOURCE, BATTERY_WARNING]
+    
+    @classmethod
+    def parse_response_data(cls, data):
+        return super().parse_response_data([data[3], data[5], data[1]])
